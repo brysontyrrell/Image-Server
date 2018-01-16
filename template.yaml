@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Serves images from S3 and dynamically resizes on request.
+
+Resources:
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+      DefinitionBody:
+        swagger: 2.0
+        info:
+          title:
+            Ref: AWS::StackName
+        paths:
+          '/images/{images}':
+            get:
+              responses: {}
+              x-amazon-apigateway-integration:
+                uri:
+                  Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ImageProcessorFunc.Arn}/invocations
+                type: aws_proxy
+                httpMethod: post
+
+        x-amazon-apigateway-binary-media-types:
+          - '*/*'
+
+  ImageProcessorFunc:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.6
+      CodeUri: ./ImageProcessorFunc
+      Timeout: 30
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref Bucket
+      Policies:
+        Statement:
+          - Effect: Allow
+            Action: s3:GetObject
+            Resource: !Sub 'arn:aws:s3:::${Bucket}/*'
+          - Effect: Allow
+            Action: s3:PutObject
+            Resource: !Sub 'arn:aws:s3:::${Bucket}/*'
+      Events:
+        GetApi:
+          Type: Api
+          Properties:
+            Path: /images/{images}
+            Method: get
+            RestApiId:
+                Ref: ApiGateway
+
+  Bucket:
+    Type: AWS::S3::Bucket
